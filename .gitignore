@@ -1,0 +1,22 @@
+# Build
+cmake-build-*/
+build/
+mlp
+vectors
+
+# IDE
+.idea/
+
+# Generated output
+train_errors.txt
+correct_guesses.txt
+wrong_guesses.txt
+
+# Compiled binaries
+*.o
+*.out
+mlp_test
+vectors_test
+
+# Jupyter
+.ipynb_checkpoints/
