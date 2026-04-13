@@ -4,10 +4,9 @@
 
 #define VECTOR_SIZE 4000
 
-double x1, x2;
-
 int main()
 {
+    double x1, x2;
     srand(time(NULL));
    
     FILE *train = fopen("data/train_vectors.txt", "w");
