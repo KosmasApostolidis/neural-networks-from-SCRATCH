@@ -4,21 +4,23 @@
 #include <math.h>
 #include <time.h>
 
-#define d   2       /* Number of inputs */
-#define p   3       /* Number of outputs */
-#define K   3       /* Number of categories */
-#define H1  30      /* Number of neurons in the first layer */
-#define H2  30      /* Number of neurons in the second layer*/
-#define H3  30      /* Number of neurons in the third layer */
-#define HL  3       /* Number of hidden layers */
-#define H   4       /* Number of layers including the output layer */
-#define f   0       /* Type of activation function to be used (0 for logistic, 1 for tanh, 2 for relu) */
-#define n   0.2     /* Learning rate */
-#define B   40      /* Batch for gradient descent B=1 -> Stochastic , B=4000 -> Batch, B=500 -> mini-Batch*/
+#define INPUT_DIM       2       /* Number of inputs */
+#define NUM_OUTPUTS     3       /* Number of outputs */
+#define K               3       /* Number of categories */
+#define H1              30      /* Number of neurons in the first layer */
+#define H2              30      /* Number of neurons in the second layer*/
+#define H3              30      /* Number of neurons in the third layer */
+#define HL              3       /* Number of hidden layers */
+#define H               4       /* Number of layers including the output layer */
+#define ACTIVATION_TYPE 0       /* Type of activation function to be used (0 for logistic, 1 for tanh, 2 for relu) */
+#define LEARNING_RATE   0.2     /* Learning rate */
+#define B               40      /* Batch for gradient descent B=1 -> Stochastic , B=4000 -> Batch, B=500 -> mini-Batch*/
 
-#define EPOCHS 1000  /* Number of epochs before termination */
-#define N      4000  /* Number of inputs per set */
-#define WEIGHTS_NUM  (H1*(d+1) + H2*(H1+1) + H3*(H2+1) + p*(H3+1))  /* Total number of weights in the network */
+#define EPOCHS          1000    /* Number of epochs before termination */
+#define N               4000    /* Number of inputs per set */
+#define ERROR_THRESHOLD 0.07    /* Error threshold for early stopping */
+#define MIN_EPOCH       700     /* Minimum epoch before early stopping */
+#define WEIGHTS_NUM     (H1*(INPUT_DIM+1) + H2*(H1+1) + H3*(H2+1) + NUM_OUTPUTS*(H3+1))  /* Total number of weights in the network */
 #define RANDOM_DOUBLE(A,B) (((double)rand()/(double)(RAND_MAX)) * ((B)-(A)) + (A))
 
 
@@ -58,6 +60,8 @@ void reverse_pass();
 void gradient_descent();
 void back_propagation(Input_t x);
 void reset_partial_derivatives();
+void shuffle_train_indices(int *indices, int size);
+void cleanup();
 
 
 /* ------------GLOBALS------------- */
@@ -65,7 +69,7 @@ Network_t network;
 Input_t train_set[N];
 Input_t test_set[N];
 
-int neuronsPerLayer[4] = {H1, H2, H3, p}; // Hidden + output
+int neuronsPerLayer[4] = {H1, H2, H3, NUM_OUTPUTS}; // Hidden + output
 double partial_derivatives[WEIGHTS_NUM];  // This array will be used to update the weights after each batch.
 
 int train_c1, train_c2, train_c3;
@@ -73,7 +77,7 @@ int test_c1, test_c2, test_c3;
 /* ------------GLOBALS------------- */
 
 /*
- * This function encodes each input according to their respective category 
+ * This function encodes each input according to their respective category
  * using the 1-out of-p encoding method
  */
 void categorize(char *category, Input_t *input, int i, char *type)
@@ -114,11 +118,11 @@ void categorize(char *category, Input_t *input, int i, char *type)
         else
             train_c3++;
     }
-    
+
 }
 
-/* 
- *This function organizes each input in a category 
+/*
+ *This function organizes each input in a category
  */
 void encode_input(double x1, double x2, Input_t *input, int i, char *type)
 {
@@ -127,17 +131,17 @@ void encode_input(double x1, double x2, Input_t *input, int i, char *type)
     else if (pow((x1 + 0.5),2) + pow((x2 + 0.5),2) < 0.2 && x2 > -0.5) categorize("C1", input, i, type);
     else if (pow((x1 + 0.5),2) + pow((x2 + 0.5),2) < 0.2 && x2 < -0.5) categorize("C2", input, i, type);
     else if (pow((x1 - 0.5),2) + pow((x2 + 0.5),2) < 0.2 && x2 > -0.5) categorize("C1", input, i, type);
-    else if (pow((x1 - 0.5),2) + pow((x2 + 0.5),2) < 0.2 && x2 < -0.5) categorize("C2", input, i, type);  
-    else if (pow((x1 + 0.5),2) + pow((x2 - 0.5),2) < 0.2 && x2 > 0.5)  categorize("C1", input, i, type);  
-    else if (pow((x1 + 0.5),2) + pow((x2 - 0.5),2) < 0.2 && x2 < 0.5)  categorize("C2", input, i, type);  
+    else if (pow((x1 - 0.5),2) + pow((x2 + 0.5),2) < 0.2 && x2 < -0.5) categorize("C2", input, i, type);
+    else if (pow((x1 + 0.5),2) + pow((x2 - 0.5),2) < 0.2 && x2 > 0.5)  categorize("C1", input, i, type);
+    else if (pow((x1 + 0.5),2) + pow((x2 - 0.5),2) < 0.2 && x2 < 0.5)  categorize("C2", input, i, type);
     else categorize("C3", input, i, type);
 }
 
 double activation_function(double sum)
 {
-    switch(f)
+    switch(ACTIVATION_TYPE)
     {
-        case 0: return 1/ (double) (1+exp(-sum));                                       // Logistic 
+        case 0: return 1/ (double) (1+exp(-sum));                                       // Logistic
         case 1: return tanh(sum);
         case 2: return sum > 0.0 ? sum : 0.0;                                   // relu
         default: return 0.0;
@@ -146,7 +150,7 @@ double activation_function(double sum)
 
 double calculate_activation_derivative(double y)
 {
-    switch(f)
+    switch(ACTIVATION_TYPE)
     {
         case 0: return (y * (1 - y));
         case 1: return (1 - pow(y, 2));
@@ -170,7 +174,7 @@ void forward_pass(Input_t x)
                 u_i += network.layers[h].neuron[j].w[2] * x.x2;
 
                 network.layers[h].neuron[j].output = activation_function(u_i);
-                
+
                 u_i = 0.0;
             }
         }
@@ -180,7 +184,7 @@ void forward_pass(Input_t x)
             for (int i = 0; i < neuronsPerLayer[h]; i++)
             {
                 u_i += network.layers[h].neuron[i].w[0];
-                
+
                 for (int j = 0; j < neuronsPerLayer[h-1]; j++)
                 {
                     u_i += network.layers[h].neuron[i].w[j+1] * network.layers[h-1].neuron[j].output;
@@ -200,7 +204,7 @@ void forward_pass(Input_t x)
         }
     }
 
-    for (int i = 0; i < p; i++)
+    for (int i = 0; i < NUM_OUTPUTS; i++)
     {
         network.layers[HL].neuron[i].error_signal = network.layers[HL].neuron[i].output - x.category[i];
     }
@@ -213,7 +217,7 @@ void reverse_pass()
     {
         if (h == HL) //Output layer
         {
-            for (int i = 0; i < p; i++)
+            for (int i = 0; i < NUM_OUTPUTS; i++)
             {
                 double y = network.layers[h].neuron[i].output;
                 network.layers[h].neuron[i].delta_i = network.layers[HL].neuron[i].error_signal * (y * (1 - y));
@@ -283,6 +287,17 @@ void reset_partial_derivatives()
     }
 }
 
+void shuffle_train_indices(int *indices, int size)
+{
+    for (int i = size - 1; i > 0; i--)
+    {
+        int j = rand() % (i + 1);
+        int temp = indices[i];
+        indices[i] = indices[j];
+        indices[j] = temp;
+    }
+}
+
 void gradient_descent()
 {
     int epoch = 0;       // We use this to check whether certain epochs have passed
@@ -291,26 +306,35 @@ void gradient_descent()
     double sum = 0.0;
     double global_error = 0.0;
 
+    int train_indices[N];
+    for (int i = 0; i < N; i++) train_indices[i] = i;
+    shuffle_train_indices(train_indices, N);
+
     FILE *training_errors = fopen("train_errors.txt", "w+");
-    fprintf(training_errors, "%s,%s\n", "Error", "Epoch");
+    if (training_errors == NULL)
+    {
+        printf("Error opening train_errors.txt for writing\n");
+        exit(1);
+    }
+    fprintf(training_errors, "%s,%s\n", "Error", "Epochs");
 
     printf("-----------------Training-----------------\n");
 
     while(epoch < EPOCHS)
-    {        
+    {
         reset_partial_derivatives();
         for (int b = 0; b < B && input_count < N; b++)
         {
-            back_propagation(train_set[input_count]); // perform forward and reverse pass and calculate partial derivatives;
+            back_propagation(train_set[train_indices[input_count]]); // perform forward and reverse pass and calculate partial derivatives;
             input_count++;
-            
+
             for (int h = 0; h < H; h++)
             {
                 for (int i = 0; i < neuronsPerLayer[h]; i++)
                 {
                     if (h == 0) // first hidden layer
                     {
-                        for (int j = 0; j < d + 1; j++)
+                        for (int j = 0; j < INPUT_DIM + 1; j++)
                         {
                             partial_derivatives[p_d_counter] += network.layers[h].neuron[i].error_derivative[j];
                             p_d_counter++;
@@ -337,9 +361,9 @@ void gradient_descent()
             {
                 if (h == 0) // First hidden layer
                 {
-                    for (int j = 0; j < d + 1; j++)
+                    for (int j = 0; j < INPUT_DIM + 1; j++)
                     {
-                        network.layers[h].neuron[i].w[j] -= n * partial_derivatives[p_d_counter] / B;
+                        network.layers[h].neuron[i].w[j] -= LEARNING_RATE * partial_derivatives[p_d_counter] / B;
                         p_d_counter++;
                     }
                 }
@@ -347,7 +371,7 @@ void gradient_descent()
                 {
                     for (int j = 0; j < neuronsPerLayer[h-1] + 1; j++)
                     {
-                        network.layers[h].neuron[i].w[j] -= n * partial_derivatives[p_d_counter] / B;
+                        network.layers[h].neuron[i].w[j] -= LEARNING_RATE * partial_derivatives[p_d_counter] / B;
                         p_d_counter++;
                     }
                 }
@@ -356,13 +380,13 @@ void gradient_descent()
         p_d_counter = 0;
 
         if(input_count >= N)  // If an epoch is done calculate global error
-        {          
+        {
             //Calculate error
             for (int i = 0; i < N; i++)
             {
                 forward_pass(train_set[i]);
 
-                for (int j = 0; j < p; j++)
+                for (int j = 0; j < NUM_OUTPUTS; j++)
                 {
                     sum += pow(train_set[i].category[j] - network.layers[HL].neuron[j].output, 2);
                 }
@@ -370,9 +394,10 @@ void gradient_descent()
             sum /= 2.0;
             global_error = sum;
             input_count = 0;
-            fprintf(training_errors, "%lf, %d\n", sum, epoch+1);
+            shuffle_train_indices(train_indices, N);
+            fprintf(training_errors, "%lf,%d\n", sum, epoch+1);
             sum = 0.0;
-            if(global_error <= 0.07 && epoch >= 700)
+            if(global_error <= ERROR_THRESHOLD && epoch >= MIN_EPOCH)
             {
                 printf("Error threshhold passed!\nStopped at epoch %d\n", epoch);
                 epoch = EPOCHS;
@@ -391,7 +416,7 @@ void gradient_descent()
 void initialize()
 {
     srand(time(NULL)); //This is so the random generted weights are different every time.
-    
+
     // Allocate memory for all the neurons in the network.
     for (int i = 0; i < H ; i++)
     {
@@ -409,19 +434,19 @@ void initialize()
     {
         for (int j = 0; j < neuronsPerLayer[i]; j++) // for every neuron in every layer
         {
-            lastLayerNeurons = (i == 0) ? d + 1 : neuronsPerLayer[i-1] + 1; // The +1 is for the Bias
+            lastLayerNeurons = (i == 0) ? INPUT_DIM + 1 : neuronsPerLayer[i-1] + 1; // The +1 is for the Bias
 
             network.layers[i].neuron[j].w = malloc(sizeof(double) * lastLayerNeurons);
-            network.layers[i].neuron[j].error_derivative = malloc(sizeof(double) * lastLayerNeurons); 
+            network.layers[i].neuron[j].error_derivative = malloc(sizeof(double) * lastLayerNeurons);
             if(network.layers[i].neuron[j].w == NULL)
             {
                 printf("Memory allocation for the weights failed!");
-                exit(0);
+                exit(1);
             }
             if(network.layers[i].neuron[j].error_derivative == NULL)
             {
                 printf("Memory allocation for the new weights failed!");
-                exit(0);
+                exit(1);
             }
 
             for (int k = 0; k < lastLayerNeurons; k++)
@@ -432,7 +457,7 @@ void initialize()
     }
 }
 
-//This function sets up the train and test vectors 
+//This function sets up the train and test vectors
 void setup()
 {
     FILE *train = fopen("data/train_vectors.txt", "r");
@@ -445,18 +470,24 @@ void setup()
     }
 
     double x1, x2;
-    for (int i = 0; i < N; i++) 
+    for (int i = 0; i < N; i++)
     {
-        fscanf(train, "%lf", &x1);
-        fscanf(train, "%lf", &x2);
-        
+        if (fscanf(train, "%lf", &x1) != 1 || fscanf(train, "%lf", &x2) != 1)
+        {
+            printf("Error reading training data at line %d\n", i);
+            exit(1);
+        }
+
         train_set[i].x1 = x1;
         train_set[i].x2 = x2;
         encode_input(x1, x2, train_set, i, "train");
 
-        fscanf(test, "%lf", &x1);
-        fscanf(test, "%lf", &x2);
-        
+        if (fscanf(test, "%lf", &x1) != 1 || fscanf(test, "%lf", &x2) != 1)
+        {
+            printf("Error reading test data at line %d\n", i);
+            exit(1);
+        }
+
         test_set[i].x1 = x1;
         test_set[i].x2 = x2;
         encode_input(x1, x2, test_set, i, "test");
@@ -480,15 +511,21 @@ void test_generalization_integrity()
     FILE *correct_guesses = fopen("correct_guesses.txt", "w+");
     FILE *wrong_guesses = fopen("wrong_guesses.txt", "w+");
 
-    fprintf(correct_guesses, "%s, %s\n", "X1", "X2");
-    fprintf(wrong_guesses, "%s, %s\n", "X1", "X2");
+    if (correct_guesses == NULL || wrong_guesses == NULL)
+    {
+        printf("Error opening output files for writing\n");
+        exit(1);
+    }
 
-    
+    fprintf(correct_guesses, "%s,%s\n", "X1", "X2");
+    fprintf(wrong_guesses, "%s,%s\n", "X1", "X2");
+
+
 
     for (int i = 0; i < N; i++)
     {
         forward_pass(test_set[i]);
-        for (int h = 0; h < p; h++)
+        for (int h = 0; h < NUM_OUTPUTS; h++)
         {
             if (network.layers[HL].neuron[h].output > max)
             {
@@ -534,14 +571,28 @@ void test_generalization_integrity()
     printf("Accuracy: %.2lf%c\n", 100-error, '%');
 }
 
+void cleanup()
+{
+    for (int i = 0; i < H; i++)
+    {
+        for (int j = 0; j < neuronsPerLayer[i]; j++)
+        {
+            free(network.layers[i].neuron[j].w);
+            free(network.layers[i].neuron[j].error_derivative);
+        }
+        free(network.layers[i].neuron);
+    }
+}
+
 int main() {
 
     setup();
     initialize();
-    
+
     gradient_descent();
-    test_generalization_integrity();  
+    test_generalization_integrity();
+
+    cleanup();
 
     return 0;
 }
-
