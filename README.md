@@ -10,7 +10,7 @@ Input (2)  ──>  Hidden 1 (30)  ──>  Hidden 2 (30)  ──>  Hidden 3 (30
                   /tanh/ReLU           /tanh/ReLU          /tanh/ReLU         (always)
 ```
 
-**Total parameters:** 2,043 weights
+**Total parameters:** 2,043 weights (including biases)
 
 The network classifies 2D points into 3 categories using one-hot encoding. The classification boundaries are defined by four circles centered at (+-0.5, +-0.5) with radius sqrt(0.2), split into upper/lower halves (C1/C2), with everything outside classified as C3.
 
@@ -20,13 +20,15 @@ All hyperparameters are compile-time constants in `src/mlp.c`:
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `d` | 2 | Input dimensions |
-| `p` | 3 | Output classes |
+| `INPUT_DIM` | 2 | Input dimensions |
+| `NUM_OUTPUTS` | 3 | Output classes |
 | `H1, H2, H3` | 30 | Neurons per hidden layer |
-| `f` | 0 | Activation function (0=logistic, 1=tanh, 2=ReLU) |
-| `n` | 0.2 | Learning rate |
-| `B` | 40 | Mini-batch size (1=SGD, 4000=batch) |
+| `ACTIVATION_TYPE` | 0 | Hidden-layer activation (0=logistic, 1=tanh, 2=ReLU) |
+| `LEARNING_RATE` | 0.2 | Learning rate |
+| `B` | 40 | Mini-batch size (1=SGD, 4000=full batch) |
 | `EPOCHS` | 1000 | Maximum training epochs |
+| `ERROR_THRESHOLD` | 0.07 | Mean per-sample error below which training stops early |
+| `MIN_EPOCH` | 700 | Earliest epoch at which early stopping may trigger |
 | `N` | 4000 | Samples per dataset |
 
 ## Building
@@ -65,14 +67,18 @@ Training produces three output files:
 Example output:
 ```
 -----------------Training-----------------
+Error threshold passed!
+Stopped at epoch 769
 ---------------Training Done--------------
-C1: 1188 guessed correctly out of 1225
-C2: 1219 guessed correctly out of 1264
-C3: 1491 guessed correctly out of 1511
-Incorrect guesses: 102
-Error percentage: 2.55%
-Accuracy: 97.45%
+C1: 1142 guessed correctly out of 1225
+C2: 1193 guessed correctly out of 1264
+C3: 1339 guessed correctly out of 1511
+Incorrect guesses: 326
+Error percentage: 8.15%
+Accuracy: 91.85%
 ```
+
+Early stopping halts training as soon as the mean error dips below `ERROR_THRESHOLD`, trading some accuracy for compute. To train longer and reach ~96–97% accuracy, lower `ERROR_THRESHOLD` or raise `MIN_EPOCH`.
 
 ## Visualization
 
@@ -99,7 +105,7 @@ Open `visualization.ipynb` in Jupyter to plot the training error curve and class
 - **Forward pass:** Computes weighted sums and applies activation functions layer by layer. The output layer always uses the logistic sigmoid regardless of the hidden layer activation.
 - **Backpropagation:** Computes deltas from output to input using the chain rule, then calculates per-weight error derivatives.
 - **Mini-batch gradient descent:** Accumulates gradients over up to B samples (the last batch of an epoch is smaller when B does not divide N), averages them, and updates weights. Supports stochastic (B=1), mini-batch, and full-batch (B=N) modes.
-- **Early stopping:** Training halts if the mean per-sample error drops below 0.07 after epoch 700.
+- **Early stopping:** Training halts if the mean per-sample error drops below `ERROR_THRESHOLD` (0.07) once `MIN_EPOCH` (700) is reached.
 
 ## License
 
