@@ -98,8 +98,8 @@ Open `visualization.ipynb` in Jupyter to plot the training error curve and class
 
 - **Forward pass:** Computes weighted sums and applies activation functions layer by layer. The output layer always uses the logistic sigmoid regardless of the hidden layer activation.
 - **Backpropagation:** Computes deltas from output to input using the chain rule, then calculates per-weight error derivatives.
-- **Mini-batch gradient descent:** Accumulates gradients over B samples, averages them, and updates weights. Supports stochastic (B=1), mini-batch, and full-batch (B=N) modes.
-- **Early stopping:** Training halts if the global error drops below 0.07 after epoch 700.
+- **Mini-batch gradient descent:** Accumulates gradients over up to B samples (the last batch of an epoch is smaller when B does not divide N), averages them, and updates weights. Supports stochastic (B=1), mini-batch, and full-batch (B=N) modes.
+- **Early stopping:** Training halts if the mean per-sample error drops below 0.07 after epoch 700.
 
 ## License
 

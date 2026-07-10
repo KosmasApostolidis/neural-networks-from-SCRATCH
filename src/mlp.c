@@ -6,7 +6,6 @@
 
 #define INPUT_DIM       2       /* Number of inputs */
 #define NUM_OUTPUTS     3       /* Number of outputs */
-#define K               3       /* Number of categories */
 #define H1              30      /* Number of neurons in the first layer */
 #define H2              30      /* Number of neurons in the second layer*/
 #define H3              30      /* Number of neurons in the third layer */
@@ -21,7 +20,7 @@
 #define ERROR_THRESHOLD 0.07    /* Error threshold for early stopping */
 #define MIN_EPOCH       700     /* Minimum epoch before early stopping */
 #define WEIGHTS_NUM     (H1*(INPUT_DIM+1) + H2*(H1+1) + H3*(H2+1) + NUM_OUTPUTS*(H3+1))  /* Total number of weights in the network */
-#define RANDOM_DOUBLE(A,B) (((double)rand()/(double)(RAND_MAX)) * ((B)-(A)) + (A))
+#define RANDOM_DOUBLE(LO,HI) (((double)rand()/(double)(RAND_MAX)) * ((HI)-(LO)) + (LO))
 
 
 // Neuron struct for each neuron in the network
@@ -29,7 +28,7 @@ typedef struct Input
 {
     double x1;
     double x2;
-    int category[3]; // 1-out of-p encoding, C1 = {1, 0, 0} || C2 = {0, 1, 0} || C3 = {0, 0, 1}
+    int category[NUM_OUTPUTS]; // 1-out of-p encoding, C1 = {1, 0, 0} || C2 = {0, 1, 0} || C3 = {0, 0, 1}
 }Input_t;
 
 typedef struct Neuron_t
@@ -126,14 +125,14 @@ void categorize(char *category, Input_t *input, int i, char *type)
  */
 void encode_input(double x1, double x2, Input_t *input, int i, char *type)
 {
-    if      (pow((x1 - 0.5),2) + pow((x2 - 0.5),2) < 0.2 && x2 > 0.5)  categorize("C1", input, i, type);
-    else if (pow((x1 - 0.5),2) + pow((x2 - 0.5),2) < 0.2 && x2 < 0.5)  categorize("C2", input, i, type);
-    else if (pow((x1 + 0.5),2) + pow((x2 + 0.5),2) < 0.2 && x2 > -0.5) categorize("C1", input, i, type);
-    else if (pow((x1 + 0.5),2) + pow((x2 + 0.5),2) < 0.2 && x2 < -0.5) categorize("C2", input, i, type);
-    else if (pow((x1 - 0.5),2) + pow((x2 + 0.5),2) < 0.2 && x2 > -0.5) categorize("C1", input, i, type);
-    else if (pow((x1 - 0.5),2) + pow((x2 + 0.5),2) < 0.2 && x2 < -0.5) categorize("C2", input, i, type);
-    else if (pow((x1 + 0.5),2) + pow((x2 - 0.5),2) < 0.2 && x2 > 0.5)  categorize("C1", input, i, type);
-    else if (pow((x1 + 0.5),2) + pow((x2 - 0.5),2) < 0.2 && x2 < 0.5)  categorize("C2", input, i, type);
+    if      (pow((x1 - 0.5),2) + pow((x2 - 0.5),2) < 0.2 && x2 > 0.5)   categorize("C1", input, i, type);
+    else if (pow((x1 - 0.5),2) + pow((x2 - 0.5),2) < 0.2 && x2 <= 0.5)  categorize("C2", input, i, type);
+    else if (pow((x1 + 0.5),2) + pow((x2 + 0.5),2) < 0.2 && x2 > -0.5)  categorize("C1", input, i, type);
+    else if (pow((x1 + 0.5),2) + pow((x2 + 0.5),2) < 0.2 && x2 <= -0.5) categorize("C2", input, i, type);
+    else if (pow((x1 - 0.5),2) + pow((x2 + 0.5),2) < 0.2 && x2 > -0.5)  categorize("C1", input, i, type);
+    else if (pow((x1 - 0.5),2) + pow((x2 + 0.5),2) < 0.2 && x2 <= -0.5) categorize("C2", input, i, type);
+    else if (pow((x1 + 0.5),2) + pow((x2 - 0.5),2) < 0.2 && x2 > 0.5)   categorize("C1", input, i, type);
+    else if (pow((x1 + 0.5),2) + pow((x2 - 0.5),2) < 0.2 && x2 <= 0.5)  categorize("C2", input, i, type);
     else categorize("C3", input, i, type);
 }
 
@@ -303,6 +302,7 @@ void gradient_descent()
     int epoch = 0;       // We use this to check whether certain epochs have passed
     int input_count = 0; // We use this counter to check whether an epoch has passed
     int p_d_counter = 0;
+    int batch_size = 0;  // Actual samples in the current batch (< B when B does not divide N)
     double sum = 0.0;
     double global_error = 0.0;
 
@@ -323,7 +323,7 @@ void gradient_descent()
     while(epoch < EPOCHS)
     {
         reset_partial_derivatives();
-        for (int b = 0; b < B && input_count < N; b++)
+        for (batch_size = 0; batch_size < B && input_count < N; batch_size++)
         {
             back_propagation(train_set[train_indices[input_count]]); // perform forward and reverse pass and calculate partial derivatives;
             input_count++;
@@ -363,7 +363,7 @@ void gradient_descent()
                 {
                     for (int j = 0; j < INPUT_DIM + 1; j++)
                     {
-                        network.layers[h].neuron[i].w[j] -= LEARNING_RATE * partial_derivatives[p_d_counter] / B;
+                        network.layers[h].neuron[i].w[j] -= LEARNING_RATE * partial_derivatives[p_d_counter] / batch_size;
                         p_d_counter++;
                     }
                 }
@@ -371,7 +371,7 @@ void gradient_descent()
                 {
                     for (int j = 0; j < neuronsPerLayer[h-1] + 1; j++)
                     {
-                        network.layers[h].neuron[i].w[j] -= LEARNING_RATE * partial_derivatives[p_d_counter] / B;
+                        network.layers[h].neuron[i].w[j] -= LEARNING_RATE * partial_derivatives[p_d_counter] / batch_size;
                         p_d_counter++;
                     }
                 }
@@ -391,7 +391,7 @@ void gradient_descent()
                     sum += pow(train_set[i].category[j] - network.layers[HL].neuron[j].output, 2);
                 }
             }
-            sum /= 2.0;
+            sum /= (2.0 * N); // Mean per-sample error, so ERROR_THRESHOLD is dataset-size independent
             global_error = sum;
             input_count = 0;
             shuffle_train_indices(train_indices, N);
@@ -399,7 +399,7 @@ void gradient_descent()
             sum = 0.0;
             if(global_error <= ERROR_THRESHOLD && epoch >= MIN_EPOCH)
             {
-                printf("Error threshhold passed!\nStopped at epoch %d\n", epoch);
+                printf("Error threshold passed!\nStopped at epoch %d\n", epoch);
                 epoch = EPOCHS;
             }
             epoch++;
